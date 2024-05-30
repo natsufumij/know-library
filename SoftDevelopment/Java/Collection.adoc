@@ -1,0 +1,131 @@
+= Java 集合学习笔记
+
+== 集合概览
+
+image::java-collection-hierarchy.png[Collection ]
+
+. Collection 
+.. List
+... ArrayList
+... LinkedList
+.. Set
+... HashSet
+... TreeSet
+.. Queue
+... ArrayDeque
+... PriorityQueue
+. Map
+... HashMap、ConcurrentHashMap
+... TreeMap
+
+
+== 重点分析
+
+. ArrayList
+. HashMap
+
+== ArrayList
+
+`ArrayList` 是一个 `List` 的实现, 表示为一组元素的集合，单纯作为存储列表的容器。并不在乎是否唯一。
+
+他内部使用一个对象数组来实现列表的存储和获取，默认构造函数下，对象数组使用一个空数组来表示，直到第一次加入元素后，开始初始化长度。默认初始化长度为16.
+
+`ArrayList` 作为一个会自动扩展集合容量以容纳更多元素的 `List` ，会在元素占满时，根据添加的元素的长度和自动扩容长度做比对，选择大的一方，如果时选择自动扩容，扩容后的容量为原本容量的 `1.5` 倍，即会增加 `0.5` 倍的容量。
+
+因为扩容的时候会将元素拷贝到新的空间，倘若频繁扩容，将会消耗挺多时间，不如一开始就将容量定好，不会有多余的拷贝时间。
+
+因为时由对象数组实现的，所以随机访问 `get(int)` 和 随机设置 `set(index,e)` 会在几乎 `O(1)` 的时间复杂度下完成。
+
+在尾部添加元素，抛出扩容的话，其实理论上也是十分迅速的。但是在头部插入性能非常差，原因便是插入后的数据拷贝偏移。如果一定要使用 `ArrayList` 的话，不建议在头部插入数据。
+
+== HashMap
+
+`HashMap` 是一个 `Map` 的实现，表示为一组键值对的集合，作为键唯一，值随意的一种数据结构容器。
+
+与 `HashTable` 不同， `HashMap` 并没有加入任何锁，这意味着在多线程情况下可能会出现意向之外的情况，而 `HashTable` 因为在方法上添加了锁，所以是多线程安全的，但是这种多线程安全的代价是性能不那么好。而 `HashMap` 则不需要考虑多线程，因此快速，建议在方法内部，局部使用。另外还有一点，`HashMap` 支持键为 `null` 值为 `null`, 而 `HashTable` 则不支持。（如果要使用多线程安全，且性能优异的 `Map` 的实现的话，可以使用 `ConcurrentHashMap`，此类为HashMap的子类，并且在多线程访问下效率较为优异）
+
+`HashMap` 内部使用一个节点数组+链表，存储值信息。
+
+最能表现 `HashMap`存储结构的有他的两个必要的接口 `put(key,value)` 和 `get(key)` 。接下来就来简要回顾两个方法各自的内容。
+
+[source,java]
+.HashMap.java#putVal()
+----
+    final V putVal(int hash, K key, V value, boolean onlyIfAbsent,
+                   boolean evict) {
+        Node<K,V>[] tab; Node<K,V> p; int n, i;
+        if ((tab = table) == null || (n = tab.length) == 0)
+            n = (tab = resize()).length;
+        if ((p = tab[i = (n - 1) & hash]) == null) // <1>
+            tab[i] = newNode(hash, key, value, null);
+        else {
+            Node<K,V> e; K k;
+            if (p.hash == hash &&
+                ((k = p.key) == key || (key != null && key.equals(k)))) // <2>
+                e = p;
+            else if (p instanceof TreeNode)
+                e = ((TreeNode<K,V>)p).putTreeVal(this, tab, hash, key, value); // <3>
+            else {
+                for (int binCount = 0; ; ++binCount) { // <4>
+                    if ((e = p.next) == null) {
+                        p.next = newNode(hash, key, value, null);
+                        if (binCount >= TREEIFY_THRESHOLD - 1) // -1 for 1st
+                            treeifyBin(tab, hash);
+                        break;
+                    }
+                    if (e.hash == hash &&
+                        ((k = e.key) == key || (key != null && key.equals(k))))
+                        break;
+                    p = e;
+                }
+            }
+            if (e != null) { // existing mapping for key
+                V oldValue = e.value;
+                if (!onlyIfAbsent || oldValue == null)
+                    e.value = value;
+                afterNodeAccess(e);
+                return oldValue;
+            }
+        }
+        ++modCount;
+        if (++size > threshold) // <5>
+            resize();
+        afterNodeInsertion(evict);
+        return null;
+    }
+----
+<1> 判断生成的hashcode对应的桶是否有内容
+<2> 判断对应的桶内数据的是否和当前key一致
+<3> 如果对应的桶内数据是红黑树，则将当前的键值插入该红黑树
+<4> 找到最后的节点，加入该节点，如果链表的长度大于指定的转节点最小长度-1，则将该链表转为红黑树（转换时判断整个桶列表长度是否小于 `MIN_TREEIFY_CAPACITY` 最小可树化的长度，默认值64，如果小于则有限扩容）。
+<5> 如果元素大于可扩容的最小数量，则开始进行扩容。
+
+
+[source,java]
+.HashMap#get(key)
+----
+final Node<K,V> getNode(Object key) {
+        Node<K,V>[] tab; Node<K,V> first, e; int n, hash; K k;
+        if ((tab = table) != null && (n = tab.length) > 0 &&
+            (first = tab[(n - 1) & (hash = hash(key))]) != null) {
+            if (first.hash == hash && // always check first node <1>
+                ((k = first.key) == key || (key != null && key.equals(k))))
+                return first;
+            if ((e = first.next) != null) {
+                if (first instanceof TreeNode) // <2>
+                    return ((TreeNode<K,V>)first).getTreeNode(hash, key);
+                do {
+                    if (e.hash == hash && // <3>
+                        ((k = e.key) == key || (key != null && key.equals(k))))
+                        return e;
+                } while ((e = e.next) != null);
+            }
+        }
+        return null; // <4>
+    }
+----
+<1> 先查看对应桶的第一个节点是否为需要找的，如果是，直接返回
+<2> 查看第一个节点是否为红黑树，如果是则从红黑树中获取指定值
+<3> 从链表里面找到符合节点
+<4> 如果都找不到，则返回 `null`
+
