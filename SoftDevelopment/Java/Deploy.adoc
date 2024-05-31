@@ -1,0 +1,67 @@
+= 部署学习笔记
+:toc: auto
+
+== 虚拟机Ubuntu安装
+
+=== 系统安装
+
+使用 `Ubuntu22.04` 的镜像在 `VirtualBox` 中安装Ubuntu系统，网络模式采用 `桥接网络` 以可以在局域网范围内通过ip访问该虚拟机。
+
+=== 系统更新和升级
+
+ 使用 `cd /etc/netplan` 进入网络管理页面。
+
+使用编辑器编辑 `/etc/netplan/00-installer-config.yaml`，修改 `dhcp` 的网络ip地址管理为静态ip地址。
+
+修改后内容类似如下：
+
+[source,yaml]
+----
+network:
+  ethernets:
+    enp0s3:
+      addresses:
+        - 192.168.1.6/24 # <1>
+      nameservers:
+        addresses: [114.114.114.114,8.8.8.8]
+      routes:
+        - to: default
+          via: 192.168.1.1
+  version: 2
+----
+<1> ip地址为该局域网下的合法且没有使用过的ip地址。
+
+完成后使用命令 `netplan apply` 启用该配置。
+
+ 使用命令 `sudo apt update & sudo apt upgrade` 来更新系统。
+
+== Docker的安装
+
+=== `Docker` 和 `Docker Compose` 的安装
+
+. `sudo apt install docker.io docker-compose` 使用该命令安装
+. `sudo groupadd docker` 使用该命令添加docker组
+. `sudo gpasswd -a $USER docker` 使用该命令将当前用户添加至docker组
+. `newgrp docker` 更新docker组
+. `docker version` 使用该命令查看是否成功设置组
+
+=== 设置国内镜像
+
+因为默认安装镜像源在国外，访问速度受限，使用国内的镜像站则不会受限，所以可以将使用的镜像源设置为国内的。
+
+编辑 `/etc/docker/daemon.json` , 如果没有该文件，则新建次文件，
+
+[source,json]
+----
+{
+    "regristry-mirrors": [
+        "https://registry.docker-cn.com",
+        "https://docker.mirrors.ustc.edu.cn",
+        "https://hub-mirror.c.163.com",
+        "https://mirror.baidubce.com",
+        "https://ccr.ccs.tencentyun.com"
+    ]
+}
+----
+
+使用命令 `sudo systemctl restart docker` 重启docker服务.
